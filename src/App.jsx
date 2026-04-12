@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Shield, Globe, Zap, ShoppingCart, Smartphone, X, Loader2,
-  History, Activity, Briefcase, CheckCircle2, AlertCircle
+  History, Activity, Briefcase, CheckCircle2, AlertCircle, ArrowLeft
 } from 'lucide-react';
 
 // --- DATA ---
@@ -39,6 +39,27 @@ export default function App() {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
 
+  // --- BROWSER BACK BUTTON LOGIC ---
+  useEffect(() => {
+    if (!session) return;
+
+    // Push state so back button has somewhere to go
+    window.history.pushState({ tab: activeTab }, "");
+
+    const handlePopState = (event) => {
+      if (checkout) {
+        setCheckout(null); // Close modal first if it's open
+      } else if (event.state && event.state.tab) {
+        setActiveTab(event.state.tab);
+      } else {
+        setActiveTab('dashboard');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeTab, checkout, session]);
+
   const handleLogin = (e) => {
     e.preventDefault();
     setLoading(true);
@@ -46,7 +67,6 @@ export default function App() {
   };
 
   const validateMpesa = (code) => {
-    // Regex for standard 10-character M-Pesa codes
     const mpesaRegex = /^[S|T|Q|R][A-Z0-9]{9}$/;
     return mpesaRegex.test(code.toUpperCase());
   };
@@ -57,11 +77,8 @@ export default function App() {
       setTimeout(() => setError(''), 3000);
       return;
     }
-
     setVerifying(true);
     setError('');
-
-    // Simulate Network Verification Delay
     setTimeout(() => {
       const newAsset = { ...checkout, uid: Math.random().toString(36).toUpperCase().slice(2,8), datePurchased: new Date().toLocaleDateString() };
       setUserData(prev => ({
@@ -73,7 +90,7 @@ export default function App() {
       setCheckout(null);
       setProof('');
       setActiveTab('inventory');
-    }, 4000); // 4 seconds of "Waiting for Verification"
+    }, 4000);
   };
 
   if (!session) {
@@ -81,7 +98,6 @@ export default function App() {
       <div className="min-h-screen bg-[#060606] flex items-center justify-center p-6 overflow-hidden relative">
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-900/10 rounded-full blur-[120px] pointer-events-none"></div>
-
         <div className="w-full max-w-md bg-[#0f0f0f]/90 backdrop-blur-2xl border border-white/5 p-8 md:p-12 rounded-[3rem] text-center shadow-[0_25px_60px_rgba(0,0,0,0.8)] relative z-10">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-[2px] bg-gradient-to-r from-transparent via-purple-500 to-transparent"></div>
           <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-purple-600 to-violet-800 flex items-center justify-center mx-auto mb-8 shadow-[0_0_40px_rgba(139,92,246,0.3)]"><Shield className="text-white" size={40} /></div>
@@ -141,10 +157,13 @@ export default function App() {
           )}
 
           {activeTab === 'inventory' && (
-            <div className="space-y-4">
-              <h1 className="text-2xl font-black text-white mb-8 italic uppercase">Active Nodes</h1>
+            <div className="space-y-4 animate-in fade-in duration-500">
+              <div className="flex items-center gap-4 mb-8">
+                <button onClick={() => setActiveTab('dashboard')} className="md:hidden p-2 bg-white/5 rounded-xl text-slate-400"><ArrowLeft size={20}/></button>
+                <h1 className="text-2xl font-black text-white italic uppercase">Active Nodes</h1>
+              </div>
               {userData.inventory.length > 0 ? userData.inventory.map((item, idx) => (
-                <div key={idx} className="bg-[#0f0f0f] border border-white/5 p-6 rounded-3xl flex items-center justify-between animate-in slide-in-from-left duration-300">
+                <div key={idx} className="bg-[#0f0f0f] border border-white/5 p-6 rounded-3xl flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-purple-500 border border-white/10"><Activity size={18} /></div>
                     <div><p className="font-black text-white">{item.name}</p><p className="text-[9px] text-slate-500 uppercase font-mono">ID: {item.uid}</p></div>
@@ -156,17 +175,23 @@ export default function App() {
           )}
 
           {activeTab === 'history' && (
-            <div className="bg-[#0f0f0f] border border-white/5 rounded-[2rem] overflow-hidden">
-               <table className="w-full text-left">
-                  <thead className="bg-white/5 text-[9px] font-black uppercase text-slate-500 tracking-widest">
-                    <tr className="border-b border-white/5"><th className="p-6">Asset</th><th className="p-6">Trace ID</th><th className="p-6 text-right">Debit</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {userData.logs.map((log, i) => (
-                      <tr key={i} className="text-xs font-medium hover:bg-white/5 transition-colors"><td className="p-6 text-white">{log.item}</td><td className="p-6 text-purple-400 font-mono text-[10px] uppercase tracking-widest">{log.tx}</td><td className="p-6 text-right font-black">KES {log.price.toLocaleString()}</td></tr>
-                    ))}
-                  </tbody>
-               </table>
+            <div className="animate-in fade-in duration-500">
+               <div className="flex items-center gap-4 mb-8">
+                <button onClick={() => setActiveTab('dashboard')} className="md:hidden p-2 bg-white/5 rounded-xl text-slate-400"><ArrowLeft size={20}/></button>
+                <h1 className="text-2xl font-black text-white italic uppercase">Audit Logs</h1>
+              </div>
+               <div className="bg-[#0f0f0f] border border-white/5 rounded-[2rem] overflow-hidden">
+                <table className="w-full text-left">
+                    <thead className="bg-white/5 text-[9px] font-black uppercase text-slate-500 tracking-widest">
+                      <tr className="border-b border-white/5"><th className="p-6">Asset</th><th className="p-6">Trace ID</th><th className="p-6 text-right">Debit</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {userData.logs.map((log, i) => (
+                        <tr key={i} className="text-xs font-medium hover:bg-white/5 transition-colors"><td className="p-6 text-white">{log.item}</td><td className="p-6 text-purple-400 font-mono text-[10px] uppercase tracking-widest">{log.tx}</td><td className="p-6 text-right font-black">KES {log.price.toLocaleString()}</td></tr>
+                      ))}
+                    </tbody>
+                </table>
+               </div>
             </div>
           )}
         </div>
@@ -176,55 +201,33 @@ export default function App() {
       {checkout && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6">
           <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-md rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
-            
             {!verifying ? (
               <div className="animate-in fade-in zoom-in-95 duration-300">
                 <button onClick={() => setCheckout(null)} className="absolute top-0 right-0 p-8 text-slate-500 hover:text-white transition-all"><X size={20}/></button>
                 <div className="text-center">
-                  <Smartphone size={32} className="text-green-500 mx-auto mb-4 shadow-[0_0_20px_rgba(34,197,94,0.2)]" />
+                  <Smartphone size={32} className="text-green-500 mx-auto mb-4" />
                   <p className="text-[9px] font-black uppercase text-slate-500 tracking-[0.2em] mb-2">M-Pesa Verification</p>
                   <p className="text-3xl font-black text-white mb-4 italic tracking-tight">0781032460</p>
-                  
-                  <div className="bg-purple-500/10 py-3 rounded-2xl border border-purple-500/20 mb-6">
-                    <p className="text-purple-400 font-black text-2xl font-mono uppercase">KES {checkout.price.toLocaleString()}</p>
-                  </div>
-
+                  <div className="bg-purple-500/10 py-3 rounded-2xl border border-purple-500/20 mb-6"><p className="text-purple-400 font-black text-2xl font-mono uppercase">KES {checkout.price.toLocaleString()}</p></div>
                   <div className="space-y-3">
-                    <input 
-                      type="text" 
-                      placeholder="ENTER TRANSACTION CODE" 
-                      className={`w-full bg-black border ${error ? 'border-red-500' : 'border-white/10'} rounded-2xl px-6 py-5 text-white text-center font-mono tracking-[0.3em] outline-none uppercase transition-all`}
-                      value={proof} 
-                      onChange={(e) => setProof(e.target.value)} 
-                    />
+                    <input type="text" placeholder="ENTER TRANSACTION CODE" className={`w-full bg-black border ${error ? 'border-red-500' : 'border-white/10'} rounded-2xl px-6 py-5 text-white text-center font-mono tracking-[0.3em] outline-none uppercase transition-all`} value={proof} onChange={(e) => setProof(e.target.value)} />
                     {error && <p className="text-red-500 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1 animate-pulse"><AlertCircle size={10}/> {error}</p>}
-                    
-                    <button 
-                      onClick={handleVerify} 
-                      disabled={!proof}
-                      className="w-full py-5 bg-white text-black hover:bg-purple-600 hover:text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all disabled:opacity-20 transform active:scale-95"
-                    >
-                      Process Transaction
-                    </button>
-                    <p className="text-[8px] text-slate-600 uppercase font-black tracking-widest">Secure 256-bit encrypted tunnel</p>
+                    <button onClick={handleVerify} disabled={!proof} className="w-full py-5 bg-white text-black hover:bg-purple-600 hover:text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all disabled:opacity-20">Process Transaction</button>
                   </div>
                 </div>
               </div>
             ) : (
-              // --- WAITING FOR VERIFICATION STATE ---
               <div className="py-12 text-center animate-in fade-in zoom-in-95 duration-500">
                 <div className="relative w-24 h-24 mx-auto mb-8">
                   <div className="absolute inset-0 border-4 border-purple-500/10 rounded-full"></div>
                   <div className="absolute inset-0 border-4 border-t-purple-500 rounded-full animate-spin"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Shield className="text-purple-500 animate-pulse" size={32} />
-                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center"><Shield className="text-purple-500 animate-pulse" size={32} /></div>
                 </div>
                 <h2 className="text-xl font-black text-white uppercase italic tracking-tighter mb-2">Verifying Node</h2>
                 <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mb-6">Wait for ledger confirmation...</p>
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/5 inline-flex items-center gap-3">
-                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-ping"></div>
-                  <span className="text-[9px] font-mono text-purple-400 uppercase tracking-widest">Intercepting Signal: {proof.toUpperCase()}</span>
+                  <div className="w-2 bg-purple-500 rounded-full animate-ping h-2"></div>
+                  <span className="text-[9px] font-mono text-purple-400 uppercase tracking-widest">Signal: {proof.toUpperCase()}</span>
                 </div>
               </div>
             )}
