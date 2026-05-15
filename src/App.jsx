@@ -15,8 +15,8 @@ const MARKET_ITEMS = [
   { id: 'acc1', name: 'Transcription Account', price: 32000, detail: 'High-yield platform access' },
   { id: 'acc2', name: 'Data Annotation', price: 26000, detail: 'AI training & labeling portal' },
   { id: 'acc3', name: 'Handshake Account', price: 24500, detail: 'Premium verified handshake' },
-  { id: 'acc4', name: 'Chat Moderation', price: 19400, detail: 'Active moderation dashboard' },
-  { id: 'acc5', name: 'Data Entry', price: 1, detail: 'Standard processing portal' },
+  { id: 'acc4', name: 'Chat Moderation', price: 12400, detail: 'Active moderation dashboard' },
+  { id: 'acc5', name: 'Data Entry', price: 7500, detail: 'Standard processing portal' },
 ];
 
 const PROXY_ITEMS = [

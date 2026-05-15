@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,7 +12,7 @@ serve(async (req) => {
   try {
     const { phone, amount } = await req.json()
     
-    // --- STEP 1: PHONE SANITIZATION ---
+    // --- 1. CLEAN PHONE ---
     let formattedPhone = phone.toString().replace(/\D/g, ''); 
     if (formattedPhone.startsWith('0')) {
       formattedPhone = '254' + formattedPhone.slice(1); 
@@ -19,41 +20,33 @@ serve(async (req) => {
       formattedPhone = '254' + formattedPhone; 
     }
     
-    console.log(`Starting STK Push for: ${formattedPhone}, Amount: ${amount}`);
+    // --- 2. SETUP CLIENT ---
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    // --- STEP 2: FETCH SECRETS ---
+    // --- 3. MPESA AUTH ---
     const consumerKey = Deno.env.get('MPESA_CONSUMER_KEY')
     const consumerSecret = Deno.env.get('MPESA_CONSUMER_SECRET')
     const shortCode = Deno.env.get('MPESA_SHORTCODE')
     const passkey = Deno.env.get('MPESA_PASSKEY')
-
-    if (!consumerKey || !consumerSecret || !shortCode || !passkey) {
-      throw new Error("Missing M-Pesa Configuration in Supabase Secrets");
-    }
-
-    // --- STEP 3: GENERATE ACCESS TOKEN ---
     const auth = btoa(`${consumerKey}:${consumerSecret}`)
     const tokenRes = await fetch("https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials", {
       headers: { Authorization: `Basic ${auth}` }
     })
-    
-    if (!tokenRes.ok) {
-      throw new Error(`Auth Failed: ${tokenRes.status}`);
-    }
-
     const { access_token } = await tokenRes.json()
 
-    // --- STEP 4: GENERATE PASSWORD ---
+    // --- 4. MPESA PUSH ---
     const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)
     const password = btoa(`${shortCode}${passkey}${timestamp}`)
 
-    // --- STEP 5: INITIATE STK PUSH (With Production Origin Header) ---
     const res = await fetch("https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest", {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${access_token}`,
         'Content-Type': 'application/json',
-        'Origin': 'https://developer.safaricom.co.ke' // Strategic header for Production
+        'Origin': 'https://developer.safaricom.co.ke'
       },
       body: JSON.stringify({
         BusinessShortCode: shortCode,
@@ -71,14 +64,24 @@ serve(async (req) => {
     })
 
     const data = await res.json()
-    console.log("Safaricom STK Response:", JSON.stringify(data));
+
+    // --- 5. THE FIX: CREATE THE PENDING ROW ---
+    if (data.CheckoutRequestID) {
+      await supabase
+        .from('mpesa_payments')
+        .insert([{
+          checkout_request_id: data.CheckoutRequestID,
+          phone: formattedPhone,
+          amount: amount.toString(), // Fills the 'amount' column from your screenshot
+          status: 'pending'
+        }]);
+    }
     
     return new Response(JSON.stringify(data), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
 
   } catch (error) {
-    console.error("Function Error:", error.message);
     return new Response(JSON.stringify({ error: error.message }), { 
       status: 400, headers: corsHeaders 
     })

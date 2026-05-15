@@ -27,8 +27,8 @@ serve(async (req) => {
     // If payment is successful (ResultCode 0)
     if (resultCode === 0) {
       status = 'success';
-      // Extract specific data from the CallbackMetadata array
-      const items = result.CallbackMetadata.Item;
+      // Extract specific data from the CallbackMetadata array safely
+      const items = result.CallbackMetadata?.Item || [];
       items.forEach((item: any) => {
         if (item.Name === 'MpesaReceiptNumber') metadata.receipt = item.Value;
         if (item.Name === 'Amount') metadata.amount = item.Value;
@@ -40,13 +40,14 @@ serve(async (req) => {
 
     console.log(`STK Callback: ID ${checkoutID} Status: ${status} Receipt: ${metadata.receipt || 'N/A'}`);
 
-    // Update the record in your mpesa_payments table
+    // Update the record including the new columns
     const { error } = await supabase
       .from('mpesa_payments')
       .update({ 
         status: status,
-        mpesa_receipt: metadata.receipt, // Ensure you have this column!
-        amount_paid: metadata.amount,    // Ensure you have this column!
+        mpesa_receipt: metadata.receipt,
+        amount_paid: metadata.amount,
+        time_paid: new Date().toISOString(), // This fills your new column
         updated_at: new Date().toISOString()
       })
       .eq('checkout_request_id', checkoutID);
