@@ -42,7 +42,6 @@ export default function App() {
   }, []);
 
   const handleMpesaPayment = async () => {
-    // 1. Validation Check
     if (!phoneNumber || phoneNumber.length < 10) {
       setError('VALID PHONE REQUIRED');
       setTimeout(() => setError(''), 3000);
@@ -61,15 +60,17 @@ export default function App() {
       });
       
       const data = await response.json();
-      setPaymentStatus('WAITING FOR PIN...');
 
-      if (data.CheckoutRequestID) {
-        // 2. High-Speed Polling (Reduced to 600ms for speed)
+      if (data.CheckoutRequestID || data.ResponseCode === "0") {
+        setPaymentStatus('WAITING FOR PIN...');
+        const checkoutID = data.CheckoutRequestID;
+
+        // Ultra-fast polling to check database status
         const checkStatus = setInterval(async () => {
           const { data: payment } = await supabase
             .from('mpesa_payments')
             .select('status')
-            .eq('checkout_request_id', data.CheckoutRequestID)
+            .eq('checkout_request_id', checkoutID)
             .maybeSingle();
 
           if (payment?.status === 'success') {
@@ -87,16 +88,26 @@ export default function App() {
               }
               setVerifying(false); 
               setCheckout(null);
+              setPaymentStatus(null);
             }, 800);
           } else if (payment?.status === 'failed' || payment?.status === 'cancelled') {
             clearInterval(checkStatus);
             setPaymentStatus('FAILED');
-            setTimeout(() => setVerifying(false), 1500);
+            setTimeout(() => {
+              setVerifying(false);
+              setPaymentStatus(null);
+            }, 1500);
           }
-        }, 600); // Ultra-fast interval
+        }, 600);
+      } else {
+        throw new Error(data.errorMessage || 'PUSH FAILED');
       }
     } catch (err) { 
-      setVerifying(false); 
+      setError(err.message.toUpperCase());
+      setTimeout(() => {
+        setVerifying(false);
+        setError('');
+      }, 3000);
     }
   };
 
