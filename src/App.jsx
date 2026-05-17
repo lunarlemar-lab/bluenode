@@ -152,10 +152,75 @@ export default function App() {
             ))}
           </div>
         )}
-        {/* rest unchanged */}
+
+        {activeTab === 'proxy_selection' && (
+          <div className="max-w-3xl mx-auto text-center py-10 animate-in zoom-in-95 duration-500">
+            <h1 className="text-3xl font-black text-white italic uppercase mb-8 tracking-tighter">Select Proxy Node</h1>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {PROXY_ITEMS.map(proxy => (
+                <div key={proxy.id} className="bg-[#0f0f0f] border border-white/10 p-8 rounded-[2rem] text-left hover:border-purple-500/30 transition-all">
+                  <Globe className="text-purple-500 mb-4" size={24} />
+                  <h3 className="text-xl font-black text-white mb-1 uppercase tracking-tighter">{proxy.name}</h3>
+                  <button onClick={() => setCheckout(proxy)} className="w-full mt-6 py-4 bg-purple-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest">Link Node (KES {proxy.price})</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'provisioning' && (
+          <div className="bg-[#0f0f0f] border border-white/10 rounded-[2.5rem] p-10 max-w-2xl mx-auto text-center animate-in slide-in-from-bottom-8 duration-500">
+            <Zap className="text-purple-500 mx-auto mb-6" size={48}/>
+            <h2 className="text-2xl font-black text-white uppercase italic mb-4">{purchasedAccount?.name}</h2>
+            <div className="bg-black/40 p-6 rounded-2xl border border-white/5 font-mono text-[11px] text-left space-y-2">
+              <div className="flex justify-between border-b border-white/5 pb-2"><span className="text-slate-500 uppercase">Status</span><span className="text-green-500">ACTIVE</span></div>
+              <div className="flex justify-between"><span className="text-slate-500 uppercase">Route</span><span className="text-purple-400">{purchasedProxy?.name}</span></div>
+            </div>
+            <button 
+              onClick={() => { localStorage.clear(); window.location.reload(); }}
+              className="mt-8 text-[9px] font-black text-slate-600 uppercase tracking-widest hover:text-red-500"
+            >
+              Reset All Nodes
+            </button>
+          </div>
+        )}
       </main>
 
-      {/* Modal unchanged */}
+      {/* Modal Payment Overlay */}
+      {checkout && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-sm rounded-[2.5rem] p-8 relative shadow-[0_0_50px_rgba(147,51,234,0.15)]">
+            <button onClick={() => setCheckout(null)} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button>
+            {!verifying ? (
+              <div className="text-center">
+                <p className="text-white font-black text-4xl font-mono tracking-tighter mb-8 uppercase">KES {checkout.price.toLocaleString()}</p>
+                <div className="relative mb-4">
+                  <input 
+                    type="text" 
+                    className={`w-full bg-black/50 border ${error ? 'border-red-500' : 'border-white/5'} rounded-2xl px-5 py-4 text-white font-mono outline-none text-lg text-center transition-all`} 
+                    value={phoneNumber} 
+                    onChange={(e) => setPhoneNumber(e.target.value)} 
+                    placeholder="ENTER PHONE"
+                  />
+                  {error && (
+                    <div className="absolute -bottom-6 left-0 w-full text-center text-[9px] font-black text-red-500 uppercase tracking-widest animate-bounce">
+                      {error}
+                    </div>
+                  )}
+                </div>
+                <button onClick={handleMpesaPayment} className="w-full py-5 bg-white text-black hover:bg-purple-600 hover:text-white rounded-2xl font-black uppercase text-[11px] tracking-widest transition-colors">
+                  Authorize Payment
+                </button>
+              </div>
+            ) : (
+              <div className="py-12 text-center animate-in fade-in duration-500">
+                <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-8"></div>
+                <h3 className="text-sm font-black uppercase italic tracking-widest text-white">{paymentStatus}</h3>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
