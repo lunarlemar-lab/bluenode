@@ -1,15 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Shield, Globe, Zap, ShoppingCart, X, 
-  Briefcase, Loader2, AlertCircle
+  Briefcase
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 // --- SUPABASE CONFIG ---
 const supabase = createClient(
   'https://nkfjedmowntrngqkgpqs.supabase.co', 
-  'YOUR_KEY'
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
 );
+
+const MARKET_ITEMS = [
+  { id: 'acc1', name: 'Transcription Account', price: 32000, detail: 'High-yield platform access' },
+  { id: 'acc2', name: 'Data Annotation', price: 26000, detail: 'AI training & labeling portal' },
+  { id: 'acc3', name: 'Handshake Account', price: 24500, detail: 'Premium verified handshake' },
+  { id: 'acc4', name: 'Chat Moderation', price: 12400, detail: 'Active moderation dashboard' },
+  { id: 'acc5', name: 'Data Entry', price: 7500, detail: 'Standard processing portal' },
+  { id: 'acc6', name: 'Map reviews', price: 5500, detail: 'Google map review tasks' },
+];
+
+const PROXY_ITEMS = [
+  { id: 'p1', name: 'Residential Node', price: 1500, detail: 'High anonymity residential IP' },
+  { id: 'p2', name: 'Datacenter Proxy', price: 2200, detail: 'High-speed dedicated throughput' }
+];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard'); 
@@ -21,7 +35,7 @@ export default function App() {
   const [purchasedAccount, setPurchasedAccount] = useState(null);
   const [purchasedProxy, setPurchasedProxy] = useState(null);
 
-  // ✅ NEW: track interval globally
+  // ✅ FIX: track interval
   const [intervalId, setIntervalId] = useState(null);
 
   useEffect(() => {
@@ -31,22 +45,19 @@ export default function App() {
     if (savedProxy) setPurchasedProxy(JSON.parse(savedProxy));
   }, []);
 
-  // ✅ NEW: clear interval when component unmounts
+  // ✅ FIX: clear interval on unmount
   useEffect(() => {
     return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
+      if (intervalId) clearInterval(intervalId);
     };
   }, [intervalId]);
 
-  // ✅ NEW: reset when checkout changes (THIS FIXES YOUR ISSUE)
+  // ✅ FIX: reset when new checkout starts
   useEffect(() => {
     if (intervalId) {
       clearInterval(intervalId);
       setIntervalId(null);
     }
-
     setVerifying(false);
     setPaymentStatus(null);
   }, [checkout]);
@@ -84,7 +95,7 @@ export default function App() {
 
           if (payment?.status === 'success') {
             clearInterval(checkStatus);
-            setIntervalId(null); // ✅ added
+            setIntervalId(null);
 
             setPaymentStatus('SUCCESS!');
             setTimeout(() => {
@@ -104,7 +115,7 @@ export default function App() {
 
           } else if (payment?.status === 'failed' || payment?.status === 'cancelled') {
             clearInterval(checkStatus);
-            setIntervalId(null); // ✅ added
+            setIntervalId(null);
 
             setPaymentStatus('FAILED');
             setTimeout(() => {
@@ -114,7 +125,7 @@ export default function App() {
           }
         }, 600);
 
-        // ✅ STORE interval
+        // ✅ store interval
         setIntervalId(checkStatus);
 
       } else {
@@ -130,7 +141,68 @@ export default function App() {
   };
 
   return (
-    // ❌ UI unchanged (I DID NOT TOUCH YOUR UI)
-    <div>YOUR UI SAME AS BEFORE</div>
+    <div className="min-h-screen bg-[#060606] text-slate-200 flex flex-col md:flex-row font-sans overflow-hidden">
+      
+      {/* Sidebar */}
+      <nav className="hidden md:flex w-72 flex-col border-r border-white/5 bg-[#0a0a0a] p-8">
+        <div className="flex items-center gap-3 mb-12">
+          <Shield className="text-purple-500" size={24} />
+          <span className="text-xl font-black text-white italic uppercase tracking-tighter">BlueNode</span>
+        </div>
+        <div className="flex-1 space-y-2 text-[11px] font-black uppercase tracking-widest">
+          <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl ${activeTab === 'dashboard' ? 'bg-purple-500/10 text-purple-400' : 'text-slate-500'}`}>
+            <ShoppingCart size={18}/> Marketplace
+          </button>
+          <button onClick={() => setActiveTab(purchasedProxy ? 'provisioning' : (purchasedAccount ? 'proxy_selection' : 'dashboard'))} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl ${activeTab !== 'dashboard' ? 'bg-purple-500/10 text-purple-400' : 'text-slate-500'}`}>
+            <Zap size={18}/> Node Manager
+          </button>
+        </div>
+      </nav>
+
+      {/* Main */}
+      <main className="flex-1 overflow-y-auto p-6 md:p-10">
+        {activeTab === 'dashboard' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {MARKET_ITEMS.map(item => (
+              <div key={item.id} className="bg-[#0f0f0f] border p-6 rounded-2xl flex flex-col">
+                <Briefcase className="text-purple-500 mb-4" size={20} />
+                <h3 className="text-lg font-black text-white">{item.name}</h3>
+                <div className="mt-auto flex justify-between">
+                  <span>KES {item.price}</span>
+                  <button onClick={() => setCheckout(item)}>Select</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'proxy_selection' && (
+          <div className="grid grid-cols-2 gap-4">
+            {PROXY_ITEMS.map(proxy => (
+              <button key={proxy.id} onClick={() => setCheckout(proxy)}>
+                {proxy.name} - {proxy.price}
+              </button>
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* Modal */}
+      {checkout && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black">
+          <div className="bg-[#0f0f0f] p-6">
+            {!verifying ? (
+              <>
+                <input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} />
+                <button onClick={handleMpesaPayment}>Pay</button>
+              </>
+            ) : (
+              <div>{paymentStatus}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+    </div>
   );
 }
