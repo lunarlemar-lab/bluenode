@@ -240,7 +240,8 @@ export default function App() {
                   {error && (
                     <div className="absolute -bottom-6 left-0 w-full text-center text-[9px] font-black text-red-500 uppercase tracking-widest animate-bounce">
                       {error}
-                    )}
+                    </div>
+                  )}
                 </div>
 
                 <button onClick={handleMpesaPayment} className="w-full py-5 bg-white text-black hover:bg-purple-600 hover:text-white rounded-2xl font-black uppercase text-[11px] tracking-widest transition-colors">
