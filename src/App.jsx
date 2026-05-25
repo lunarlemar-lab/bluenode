@@ -35,6 +35,12 @@ export default function App() {
   const [purchasedAccount, setPurchasedAccount] = useState(null);
   const [purchasedProxy, setPurchasedProxy] = useState(null);
 
+  // 📝 BACKUP RECOVERY STATES FOR STEP 1
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryInput, setRecoveryInput] = useState('');
+  const [recoveryError, setRecoveryError] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+
   // ✅ Interval state management
   const [intervalId, setIntervalId] = useState(null);
 
@@ -54,6 +60,11 @@ export default function App() {
     if (!checkout) {
       setVerifying(false);
       setPaymentStatus(null);
+      // Clean recovery fields when modal closes
+      setShowRecovery(false);
+      setRecoveryInput('');
+      setRecoveryError('');
+      setIsVerifying(false);
     }
   }, [checkout]);
 
@@ -96,7 +107,6 @@ export default function App() {
             .maybeSingle();
 
           if (payment?.status === 'success') {
-            // Clear local scope interval variable & application state safely
             clearInterval(checkStatus);
             setIntervalId(null);
 
@@ -112,7 +122,6 @@ export default function App() {
                 localStorage.setItem('bn_purchasedAccount', JSON.stringify(checkout));
                 setActiveTab('proxy_selection');
               }
-              // Clear UI states *after* transition completes
               setCheckout(null);
               setVerifying(false);
               setPaymentStatus(null);
@@ -129,7 +138,7 @@ export default function App() {
               setCheckout(null);
             }, 1500);
           }
-        }, 2000); // 💡 Optimized polling rate to 2000ms to reduce database query overhead
+        }, 2000);
 
         setIntervalId(checkStatus);
 
@@ -143,6 +152,12 @@ export default function App() {
         setError('');
       }, 3000);
     }
+  };
+
+  // 📝 PLACEHOLDER FUNCTION FOR STEP 2 VALIDATION LOGIC
+  const handleRecoveryVerify = async () => {
+    // This will contain our database anti-fraud check logic in the next step
+    console.log("Verifying recovery text:", recoveryInput);
   };
 
   return (
@@ -222,9 +237,10 @@ export default function App() {
 
       {/* Modal */}
       {checkout && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-sm rounded-[2.5rem] p-8 relative shadow-[0_0_50px_rgba(147,51,234,0.15)]">
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-sm rounded-[2.5rem] p-8 relative shadow-[0_0_50px_rgba(147,51,234,0.15)] my-auto">
             <button onClick={() => setCheckout(null)} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button>
+            
             {!verifying ? (
               <div className="text-center">
                 <p className="text-white font-black text-4xl font-mono tracking-tighter mb-8 uppercase">KES {checkout.price.toLocaleString()}</p>
@@ -249,13 +265,54 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="py-12 text-center animate-in fade-in duration-500">
+              <div className="py-6 text-center animate-in fade-in duration-500">
                 <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-8"></div>
-                <h3 className="text-sm font-black uppercase italic tracking-widest text-white">
+                <h3 className="text-sm font-black uppercase italic tracking-widest text-white mb-4">
                   {paymentStatus}
                 </h3>
               </div>
             )}
+
+            {/* --- ALREADY PAID RECOVERY LAYER (STEP 1) --- */}
+            <div className="mt-6 pt-6 border-t border-white/5 text-center">
+              <button 
+                type="button"
+                onClick={() => setShowRecovery(!showRecovery)}
+                className="text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-purple-400 transition-colors underline"
+              >
+                {showRecovery ? "Hide Recovery Options" : "Already paid but stuck?"}
+              </button>
+
+              {showRecovery && (
+                <div className="mt-4 text-left p-4 bg-black/40 border border-white/5 rounded-2xl animate-in fade-in zoom-in-95 duration-200">
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                    Paste M-Pesa Message OR Input Number:
+                  </label>
+                  
+                  <textarea
+                    rows={3}
+                    value={recoveryInput}
+                    onChange={(e) => setRecoveryInput(e.target.value)}
+                    placeholder="e.g., QEJ48DKS93 Confirmed... OR 2547XXXXXXXX"
+                    className="w-full p-3 bg-black/60 border border-white/5 rounded-xl text-xs font-mono text-slate-200 placeholder-slate-700 focus:outline-none focus:border-purple-500/50 resize-none transition-all"
+                  />
+
+                  {recoveryError && (
+                    <p className="mt-2 text-[9px] font-black uppercase tracking-wider text-red-500">{recoveryError}</p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleRecoveryVerify}
+                    disabled={isVerifying || !recoveryInput.trim()}
+                    className="mt-3 w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-white/5 disabled:text-slate-600 text-white font-black uppercase text-[10px] tracking-widest rounded-xl transition-all"
+                  >
+                    {isVerifying ? "Verifying..." : "Verify & Unlock"}
+                  </button>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       )}
