@@ -17,7 +17,7 @@ const MARKET_ITEMS = [
   { id: 'acc3', name: 'Handshake Account', price: 24500, detail: 'Premium verified handshake' },
   { id: 'acc4', name: 'Chat Moderation', price: 12400, detail: 'Active moderation dashboard' },
   { id: 'acc5', name: 'Data Entry', price: 7500, detail: 'Standard processing portal' },
-  { id: 'acc6', name: 'Map reviews', price: 5, detail: 'Google map review tasks' },
+  { id: 'acc6', name: 'Map reviews', price: 5500, detail: 'Google map review tasks' },
 ];
 
 const PROXY_ITEMS = [
