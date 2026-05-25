@@ -12,11 +12,11 @@ const supabase = createClient(
 );
 
 const MARKET_ITEMS = [
-  { id: 'acc1', name: 'Transcription Account', price: 32000, detail: 'High-yield platform access' },
-  { id: 'acc2', name: 'Data Annotation', price: 26000, detail: 'AI training & labeling portal' },
-  { id: 'acc3', name: 'Handshake Account', price: 24500, detail: 'Premium verified handshake' },
-  { id: 'acc4', name: 'Chat Moderation', price: 12400, detail: 'Active moderation dashboard' },
-  { id: 'acc5', name: 'Data Entry', price: 7500, detail: 'Standard processing portal' },
+  { id: 'acc1', name: 'Transcription Account', price: 72000, detail: 'High-yield platform access' },
+  { id: 'acc2', name: 'Data Annotation', price: 46000, detail: 'AI training & labeling portal' },
+  { id: 'acc3', name: 'Handshake Account', price: 34500, detail: 'Premium verified handshake' },
+  { id: 'acc4', name: 'Chat Moderation', price: 21400, detail: 'Active moderation dashboard' },
+  { id: 'acc5', name: 'Data Entry', price: 12500, detail: 'Standard processing portal' },
   { id: 'acc6', name: 'Map reviews', price: 5500, detail: 'Google map review tasks' },
 ];
 
