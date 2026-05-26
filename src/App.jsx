@@ -35,7 +35,7 @@ export default function App() {
   const [purchasedAccount, setPurchasedAccount] = useState(null);
   const [purchasedProxy, setPurchasedProxy] = useState(null);
 
-  // 📝 BACKUP RECOVERY STATES FOR STEP 1
+  // 📝 BACKUP RECOVERY STATES
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryInput, setRecoveryInput] = useState('');
   const [recoveryError, setRecoveryError] = useState('');
@@ -154,10 +154,105 @@ export default function App() {
     }
   };
 
-  // 📝 PLACEHOLDER FUNCTION FOR STEP 2 VALIDATION LOGIC
+  // 📝 REAL-TIME VERIFICATION AND ANTI-FRAUD ENGINE
   const handleRecoveryVerify = async () => {
-    // This will contain our database anti-fraud check logic in the next step
-    console.log("Verifying recovery text:", recoveryInput);
+    if (!recoveryInput.trim()) return;
+
+    setRecoveryError('');
+    setIsVerifying(true);
+
+    try {
+      let searchPhone = null;
+      let searchReceipt = null;
+      const expectedAmount = checkout.price; 
+
+      // 1. Extract receipt number from raw message paste if applicable
+      const extractedReceipt = recoveryInput.match(/([A-Z0-9]{10})/i);
+
+      if (recoveryInput.toUpperCase().includes('CONFIRMED') && extractedReceipt) {
+        searchReceipt = extractedReceipt[1].toUpperCase();
+      } else {
+        // 2. Treat as raw phone number input and standardize to country prefix
+        let cleaned = recoveryInput.replace(/\D/g, '');
+        if (cleaned.startsWith('0')) cleaned = '254' + cleaned.slice(1);
+        if (cleaned.startsWith('7') || cleaned.startsWith('1')) cleaned = '254' + cleaned;
+        
+        if (cleaned.length === 12 && cleaned.startsWith('254')) {
+          searchPhone = cleaned;
+        } else {
+          throw new Error("INVALID FORMAT. ENTER PHONE NUMBER (E.G. 2547...) OR PASTE FULL M-PESA SMS.");
+        }
+      }
+
+      // 3. Query the database looking strictly for an authentic successful log
+      let query = supabase
+        .from('mpesa_payments')
+        .select('*')
+        .eq('status', 'success');
+
+      if (searchReceipt) {
+        query = query.eq('mpesa_receipt', searchReceipt);
+      } else {
+        query = query.eq('phone', searchPhone);
+      }
+
+      const { data: payments, error: dbError } = await query;
+
+      if (dbError) throw dbError;
+      if (!payments || payments.length === 0) {
+        throw new Error("NO MATCHING SUCCESSFUL TRANSACTION RECORD IN DATABASE.");
+      }
+
+      // Grab the newest matching instance to avoid using stale entries
+      const latestPayment = payments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+
+      // 4. CRITICAL SECURITY RULE 1: Price Mismatch Lockout
+      if (parseFloat(latestPayment.amount_paid) !== expectedAmount) {
+        throw new Error(`PRICE MISMATCH. PAID KES ${latestPayment.amount_paid} FOR A KES ${expectedAmount} ITEM.`);
+      }
+
+      // 5. CRITICAL SECURITY RULE 2: Single Device/Session Ownership Verification
+      if (latestPayment.claimed_by_user && latestPayment.claimed_by_user !== phoneNumber) {
+        throw new Error("SECURITY BLOCK: THIS PAYMENT TRANSACTION WAS ALREADY CLAIMED.");
+      }
+
+      // 6. PERMANENT LOCK: Stamp row to stop other users from pasting this entry
+      if (!latestPayment.claimed_by_user) {
+        const { error: updateError } = await supabase
+          .from('mpesa_payments')
+          .update({ claimed_by_user: phoneNumber })
+          .eq('id', latestPayment.id);
+
+        if (updateError) throw updateError;
+      }
+
+      // 7. FIRE ROUTE TRANSITION 
+      if (intervalId) clearInterval(intervalId); // Clear background loop safely
+      setVerifying(true);
+      setPaymentStatus('SUCCESS!');
+
+      setTimeout(() => {
+        if (activeTab === 'proxy_selection') {
+          setPurchasedProxy(checkout);
+          localStorage.setItem('bn_purchasedProxy', JSON.stringify(checkout));
+          setActiveTab('provisioning');
+        } else {
+          setPurchasedAccount(checkout);
+          localStorage.setItem('bn_purchasedAccount', JSON.stringify(checkout));
+          setActiveTab('proxy_selection');
+        }
+        setCheckout(null);
+        setVerifying(false);
+        setPaymentStatus(null);
+        setShowRecovery(false);
+        setRecoveryInput('');
+      }, 1000);
+
+    } catch (err) {
+      setRecoveryError(err.message.toUpperCase());
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   return (
@@ -273,7 +368,7 @@ export default function App() {
               </div>
             )}
 
-            {/* --- ALREADY PAID RECOVERY LAYER (STEP 1) --- */}
+            {/* --- ALREADY PAID RECOVERY LAYER --- */}
             <div className="mt-6 pt-6 border-t border-white/5 text-center">
               <button 
                 type="button"
