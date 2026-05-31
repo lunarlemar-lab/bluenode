@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Shield, Globe, Zap, ShoppingCart, X,
-  Briefcase, Loader2, AlertCircle, Lock, UserPlus
+  Briefcase, Loader2, AlertCircle
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -17,20 +17,16 @@ const MARKET_ITEMS = [
   { id: 'acc3', name: 'Handshake Account', price: 34500, detail: 'Premium verified handshake' },
   { id: 'acc4', name: 'Chat Moderation', price: 21400, detail: 'Active moderation dashboard' },
   { id: 'acc5', name: 'Data Entry', price: 12500, detail: 'Standard processing portal' },
-  { id: 'acc6', name: 'Map reviews', price: 4500, detail: 'Google map review tasks' },
+  { id: 'acc6', name: 'Map reviews', price: 5500, detail: 'Google map review tasks' },
 ];
 
 const PROXY_ITEMS = [
-  { id: 'p1', name: 'Residential Node', price: 1700, detail: 'High anonymity residential IP' },
+  { id: 'p1', name: 'Residential Node', price: 1500, detail: 'High anonymity residential IP' },
   { id: 'p2', name: 'Datacenter Proxy', price: 2200, detail: 'High-speed dedicated throughput' }
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('login'); // Starts at Gateway door
-  const [isAuthMode, setIsAuthMode] = useState('login'); // 'login' or 'register'
-  const [authPassword, setAuthPassword] = useState('');
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [checkout, setCheckout] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('254');
   const [verifying, setVerifying] = useState(false);
@@ -48,13 +44,11 @@ export default function App() {
   // ✅ Interval state management
   const [intervalId, setIntervalId] = useState(null);
 
-  // Auto session restore if credentials exist locally
   useEffect(() => {
-    const savedPhone = localStorage.getItem('bn_auth_phone');
-    if (savedPhone) {
-      setPhoneNumber(savedPhone);
-      routeUserByPaymentHistory(savedPhone);
-    }
+    const savedAccount = localStorage.getItem('bn_purchasedAccount');
+    const savedProxy = localStorage.getItem('bn_purchasedProxy');
+    if (savedAccount) setPurchasedAccount(JSON.parse(savedAccount));
+    if (savedProxy) setPurchasedProxy(JSON.parse(savedProxy));
   }, []);
 
   // ✅ Auto reset when window checkout closes or switches
@@ -66,6 +60,7 @@ export default function App() {
     if (!checkout) {
       setVerifying(false);
       setPaymentStatus(null);
+      // Clean recovery fields when modal closes
       setShowRecovery(false);
       setRecoveryInput('');
       setRecoveryError('');
@@ -80,116 +75,13 @@ export default function App() {
     };
   }, [intervalId]);
 
-  // 🔄 CORE ROUTING ENGINE BASED ON PAYMENT STATUS
-  const routeUserByPaymentHistory = async (targetPhone) => {
-    try {
-      const { data: payments, error: dbError } = await supabase
-        .from('mpesa_payments')
-        .select('*')
-        .eq('status', 'success')
-        .eq('claimed_by_user', targetPhone);
-
-      if (dbError) throw dbError;
-
-      if (payments && payments.length > 0) {
-        const accountPayment = payments.find(p => 
-          MARKET_ITEMS.some(item => item.price === parseFloat(p.amount_paid))
-        );
-        const proxyPayment = payments.find(p => 
-          PROXY_ITEMS.some(proxy => proxy.price === parseFloat(p.amount_paid))
-        );
-
-        if (accountPayment) {
-          const matchedAccount = MARKET_ITEMS.find(item => item.price === parseFloat(accountPayment.amount_paid));
-          setPurchasedAccount(matchedAccount);
-          localStorage.setItem('bn_purchasedAccount', JSON.stringify(matchedAccount));
-        }
-
-        if (proxyPayment) {
-          const matchedProxy = PROXY_ITEMS.find(proxy => proxy.price === parseFloat(proxyPayment.amount_paid));
-          setPurchasedProxy(matchedProxy);
-          localStorage.setItem('bn_purchasedProxy', JSON.stringify(matchedProxy));
-        }
-
-        // Smart directing logic based on their specific transaction coverage
-        if (accountPayment && proxyPayment) {
-          setActiveTab('provisioning');
-        } else if (accountPayment) {
-          setActiveTab('proxy_selection');
-        } else {
-          setActiveTab('dashboard');
-        }
-      } else {
-        setPurchasedAccount(null);
-        setPurchasedProxy(null);
-        setActiveTab('dashboard');
-      }
-    } catch (err) {
-      setError('ROUTING SUBSYSTEM FAILURE.');
-    }
-  };
-
-  // 🔐 UNIFIED SECURE TERMINAL AUTHENTICATION GATEWAY
-  const handleAuthAction = async () => {
-    let cleaned = phoneNumber.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '254' + cleaned.slice(1);
-    if (cleaned.startsWith('7') || cleaned.startsWith('1')) cleaned = '254' + cleaned;
-    
-    if (cleaned.length < 12 || !cleaned.startsWith('254')) {
-      setError('VALID FORMAT REQUIRED (E.G. 2547...)');
-      return;
-    }
-
-    if (!authPassword || authPassword.length < 4) {
-      setError('PASSWORD MUST BE AT LEAST 4 CHARACTERS.');
-      return;
-    }
-
-    setError('');
-    setIsLoggingIn(true);
-
-    try {
-      if (isAuthMode === 'register') {
-        // Run database insert for registration
-        const { error: regError } = await supabase
-          .from('bn_users')
-          .insert([{ phone: cleaned, password: authPassword }]);
-
-        if (regError) {
-          if (regError.code === '23505') { // Postgres code for unique violation
-            throw new Error('PHONE NUMBER ALREADY REGISTERED. SWITCH TO LOGIN.');
-          }
-          throw regError;
-        }
-
-        localStorage.setItem('bn_auth_phone', cleaned);
-        setPhoneNumber(cleaned);
-        setActiveTab('dashboard'); // Fresh accounts start directly on Marketplace dashboard
-      } else {
-        // Run verification check for login
-        const { data: userData, error: loginError } = await supabase
-          .from('bn_users')
-          .select('*')
-          .eq('phone', cleaned)
-          .maybeSingle();
-
-        if (loginError) throw loginError;
-        if (!userData || userData.password !== authPassword) {
-          throw new Error('AUTHENTICATION FAILED: INVALID CREDENTIALS.');
-        }
-
-        localStorage.setItem('bn_auth_phone', cleaned);
-        setPhoneNumber(cleaned);
-        await routeUserByPaymentHistory(cleaned); // Fetch history and send them to their exact step
-      }
-    } catch (err) {
-      setError(err.message.toUpperCase());
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
   const handleMpesaPayment = async () => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      setError('VALID PHONE REQUIRED');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+
     setError('');
     setVerifying(true);
     setPaymentStatus('SENDING STK...');
@@ -217,12 +109,6 @@ export default function App() {
           if (payment?.status === 'success') {
             clearInterval(checkStatus);
             setIntervalId(null);
-
-            // Firmly link this transaction row to the logged-in user profile
-            await supabase
-              .from('mpesa_payments')
-              .update({ claimed_by_user: phoneNumber })
-              .eq('checkout_request_id', checkoutID);
 
             setPaymentStatus('SUCCESS!');
             
@@ -268,6 +154,7 @@ export default function App() {
     }
   };
 
+  // 📝 REAL-TIME VERIFICATION AND ANTI-FRAUD ENGINE
   const handleRecoveryVerify = async () => {
     if (!recoveryInput.trim()) return;
 
@@ -279,11 +166,13 @@ export default function App() {
       let searchReceipt = null;
       const expectedAmount = checkout.price; 
 
+      // 1. Extract receipt number from raw message paste if applicable
       const extractedReceipt = recoveryInput.match(/([A-Z0-9]{10})/i);
 
       if (recoveryInput.toUpperCase().includes('CONFIRMED') && extractedReceipt) {
         searchReceipt = extractedReceipt[1].toUpperCase();
       } else {
+        // 2. Treat as raw phone number input and standardize to country prefix
         let cleaned = recoveryInput.replace(/\D/g, '');
         if (cleaned.startsWith('0')) cleaned = '254' + cleaned.slice(1);
         if (cleaned.startsWith('7') || cleaned.startsWith('1')) cleaned = '254' + cleaned;
@@ -291,10 +180,11 @@ export default function App() {
         if (cleaned.length === 12 && cleaned.startsWith('254')) {
           searchPhone = cleaned;
         } else {
-          throw new Error("INVALID FORMAT. ENTER PHONE NUMBER OR PASTE FULL M-PESA SMS.");
+          throw new Error("INVALID FORMAT. ENTER PHONE NUMBER (E.G. 2547...) OR PASTE FULL M-PESA SMS.");
         }
       }
 
+      // 3. Query the database looking strictly for an authentic successful log
       let query = supabase
         .from('mpesa_payments')
         .select('*')
@@ -313,16 +203,20 @@ export default function App() {
         throw new Error("NO MATCHING SUCCESSFUL TRANSACTION RECORD IN DATABASE.");
       }
 
+      // Grab the newest matching instance to avoid using stale entries
       const latestPayment = payments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
 
+      // 4. CRITICAL SECURITY RULE 1: Price Mismatch Lockout
       if (parseFloat(latestPayment.amount_paid) !== expectedAmount) {
         throw new Error(`PRICE MISMATCH. PAID KES ${latestPayment.amount_paid} FOR A KES ${expectedAmount} ITEM.`);
       }
 
+      // 5. CRITICAL SECURITY RULE 2: Single Device/Session Ownership Verification
       if (latestPayment.claimed_by_user && latestPayment.claimed_by_user !== phoneNumber) {
         throw new Error("SECURITY BLOCK: THIS PAYMENT TRANSACTION WAS ALREADY CLAIMED.");
       }
 
+      // 6. PERMANENT LOCK: Stamp row to stop other users from pasting this entry
       if (!latestPayment.claimed_by_user) {
         const { error: updateError } = await supabase
           .from('mpesa_payments')
@@ -332,7 +226,8 @@ export default function App() {
         if (updateError) throw updateError;
       }
 
-      if (intervalId) clearInterval(intervalId);
+      // 7. FIRE ROUTE TRANSITION 
+      if (intervalId) clearInterval(intervalId); // Clear background loop safely
       setVerifying(true);
       setPaymentStatus('SUCCESS!');
 
@@ -360,99 +255,6 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
-    setPhoneNumber('254');
-    setAuthPassword('');
-    setPurchasedAccount(null);
-    setPurchasedProxy(null);
-    setIsAuthMode('login');
-    setActiveTab('login');
-  };
-
-  // --- COMPACT USER GATEWAY FORM ---
-  if (activeTab === 'login') {
-    return (
-      <div className="min-h-screen bg-[#060606] text-slate-200 flex items-center justify-center p-4 font-sans">
-        <div className="w-full max-w-sm bg-[#0a0a0a] border border-white/5 p-8 rounded-[2.5rem] shadow-[0_0_60px_rgba(147,51,234,0.08)] relative overflow-hidden">
-          <div className="absolute -top-24 -left-24 w-48 h-48 bg-purple-500/10 blur-[80px] rounded-full"></div>
-          
-          <div className="text-center mb-6 relative z-10">
-            <div className="w-12 h-12 bg-purple-500/10 border border-purple-500/20 text-purple-500 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              {isAuthMode === 'login' ? <Lock size={20} /> : <UserPlus size={20} />}
-            </div>
-            <h1 className="text-xl font-black text-white uppercase italic tracking-tighter">
-              {isAuthMode === 'login' ? 'Terminal Login' : 'Register Terminal'}
-            </h1>
-            <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">
-              {isAuthMode === 'login' ? 'Access Infrastructure Profile' : 'Initialize New Identity Link'}
-            </p>
-          </div>
-
-          <div className="space-y-4 relative z-10">
-            <div>
-              <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">M-Pesa Number:</label>
-              <input
-                type="text"
-                disabled={isLoggingIn}
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-white font-mono outline-none text-base text-center focus:border-purple-500/40 transition-all"
-                placeholder="2547XXXXXXXX"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Session Password:</label>
-              <input
-                type="password"
-                disabled={isLoggingIn}
-                value={authPassword}
-                onChange={(e) => setAuthPassword(e.target.value)}
-                className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-white font-mono outline-none text-base text-center focus:border-purple-500/40 transition-all tracking-widest"
-                placeholder="••••••••"
-              />
-            </div>
-
-            {error && (
-              <p className="text-[9px] text-center font-black text-red-500 uppercase tracking-wider bg-red-500/5 border border-red-500/10 py-2.5 rounded-xl">
-                {error}
-              </p>
-            )}
-
-            <button
-              onClick={handleAuthAction}
-              disabled={isLoggingIn}
-              className="w-full py-4 bg-white text-black hover:bg-purple-600 hover:text-white disabled:bg-white/5 disabled:text-slate-600 rounded-xl font-black uppercase text-[10px] tracking-widest transition-colors flex items-center justify-center gap-2"
-            >
-              {isLoggingIn ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                isAuthMode === 'login' ? 'Authenticate' : 'Establish Link'
-              )}
-            </button>
-
-            <div className="text-center pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setError('');
-                  setIsAuthMode(isAuthMode === 'login' ? 'register' : 'login');
-                }}
-                className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-purple-400 transition-colors underline"
-              >
-                {isAuthMode === 'login' ? "Need a new account? Register" : "Already registered? Login"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#060606] text-slate-200 flex flex-col md:flex-row font-sans overflow-hidden">
       {/* Sidebar */}
@@ -473,16 +275,6 @@ export default function App() {
             className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl transition-all ${activeTab !== 'dashboard' ? 'bg-purple-500/10 text-purple-400' : 'text-slate-500'}`}
           >
             <Zap size={18}/> Node Manager
-          </button>
-        </div>
-
-        <div className="mt-auto pt-4 border-t border-white/5 text-center">
-          <p className="text-[9px] font-mono text-slate-500 truncate mb-2">{phoneNumber}</p>
-          <button 
-            onClick={handleLogout}
-            className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-400 transition-colors"
-          >
-            Disconnect Terminal
           </button>
         </div>
       </nav>
@@ -529,7 +321,7 @@ export default function App() {
               <div className="flex justify-between"><span className="text-slate-500 uppercase">Route</span><span className="text-purple-400">{purchasedProxy?.name}</span></div>
             </div>
             <button
-              onClick={handleLogout}
+              onClick={() => { localStorage.clear(); window.location.reload(); }}
               className="mt-8 text-[9px] font-black text-slate-600 uppercase tracking-widest hover:text-red-500"
             >
               Reset All Nodes
@@ -548,8 +340,19 @@ export default function App() {
               <div className="text-center">
                 <p className="text-white font-black text-4xl font-mono tracking-tighter mb-8 uppercase">KES {checkout.price.toLocaleString()}</p>
 
-                <div className="relative mb-6 text-slate-400 font-mono text-xs uppercase tracking-wider">
-                  Payment for: <strong className="text-white block mt-1">{checkout.name}</strong>
+                <div className="relative mb-4">
+                  <input
+                    type="text"
+                    className={`w-full bg-black/50 border ${error ? 'border-red-500' : 'border-white/5'} rounded-2xl px-5 py-4 text-white font-mono outline-none text-lg text-center transition-all`}
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="ENTER PHONE"
+                  />
+                  {error && (
+                    <div className="absolute -bottom-6 left-0 w-full text-center text-[9px] font-black text-red-500 uppercase tracking-widest animate-bounce">
+                      {error}
+                    </div>
+                  )}
                 </div>
 
                 <button onClick={handleMpesaPayment} className="w-full py-5 bg-white text-black hover:bg-purple-600 hover:text-white rounded-2xl font-black uppercase text-[11px] tracking-widest transition-colors">
