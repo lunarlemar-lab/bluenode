@@ -17,11 +17,11 @@ const MARKET_ITEMS = [
   { id: 'acc3', name: 'Handshake Account', price: 34500, detail: 'Premium verified handshake' },
   { id: 'acc4', name: 'Chat Moderation', price: 21400, detail: 'Active moderation dashboard' },
   { id: 'acc5', name: 'Data Entry', price: 12500, detail: 'Standard processing portal' },
-  { id: 'acc6', name: 'Map reviews', price: 5500, detail: 'Google map review tasks' },
+  { id: 'acc6', name: 'Map reviews', price: 4500, detail: 'Google map review tasks' },
 ];
 
 const PROXY_ITEMS = [
-  { id: 'p1', name: 'Residential Node', price: 1500, detail: 'High anonymity residential IP' },
+  { id: 'p1', name: 'Residential Node', price: 1700, detail: 'High anonymity residential IP' },
   { id: 'p2', name: 'Datacenter Proxy', price: 2200, detail: 'High-speed dedicated throughput' }
 ];
 
