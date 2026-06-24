@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Shield, Globe, Zap, ShoppingCart, X,
-  Briefcase, Loader2, AlertCircle
+  Briefcase, Loader2, AlertCircle, LogOut, Lock, Mail, Phone
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -21,11 +21,21 @@ const MARKET_ITEMS = [
 ];
 
 const PROXY_ITEMS = [
-  { id: 'p1', name: 'Residential Node', price: 1700, detail: 'High anonymity residential IP' },
-  { id: 'p2', name: 'Datacenter Proxy', price: 2200, detail: 'High-speed dedicated throughput' }
+  { id: 'p1', name: 'Residential Node', price: 2200, detail: 'High anonymity residential IP' },
+  { id: 'p2', name: 'Datacenter Proxy', price: 3500, detail: 'High-speed dedicated throughput' }
 ];
 
 export default function App() {
+  // --- AUTH STATES ---
+  const [session, setSession] = useState(null);
+  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [profileStage, setProfileStage] = useState('accounts_setup'); // stage from DB profiles table
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  // --- CORE SYSTEM STATES ---
   const [activeTab, setActiveTab] = useState('dashboard');
   const [checkout, setCheckout] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('254');
@@ -44,6 +54,51 @@ export default function App() {
   // ✅ Interval state management
   const [intervalId, setIntervalId] = useState(null);
 
+  // 🔐 LISTEN FOR SESSION & AUTH CHANGES
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchUserProfile(session.user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        fetchUserProfile(session.user.id);
+      } else {
+        setProfileStage('accounts_setup');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // 🛰 FETCH USER'S REAL JOURNEY STAGE FROM PUBLIC PROFILES
+  const fetchUserProfile = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('current_stage, phone_number')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        setProfileStage(data.current_stage || 'accounts_setup');
+        if (data.phone_number) setPhoneNumber(data.phone_number);
+        
+        // Dynamically shift visual view depending on backend status clearance
+        if (data.current_stage === 'proxy_dashboard') {
+          setActiveTab('proxy_selection');
+        } else {
+          setActiveTab('dashboard');
+        }
+      }
+    } catch (err) {
+      console.error("Profile stage read error:", err.message);
+    }
+  };
+
   useEffect(() => {
     const savedAccount = localStorage.getItem('bn_purchasedAccount');
     const savedProxy = localStorage.getItem('bn_purchasedProxy');
@@ -60,7 +115,6 @@ export default function App() {
     if (!checkout) {
       setVerifying(false);
       setPaymentStatus(null);
-      // Clean recovery fields when modal closes
       setShowRecovery(false);
       setRecoveryInput('');
       setRecoveryError('');
@@ -74,6 +128,52 @@ export default function App() {
       if (intervalId) clearInterval(intervalId);
     };
   }, [intervalId]);
+
+  // 📝 USER REGISTRATION & REGULAR LOGIN FLOWS
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    if (!authEmail || !authPassword) {
+      setAuthError('EMAIL AND PASSWORD REQUIRED');
+      return;
+    }
+    setAuthError('');
+    setAuthLoading(true);
+
+    try {
+      if (authMode === 'register') {
+        const { error: signUpErr } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: {
+            data: { phone_number: phoneNumber } // Syncs down into our metadata database triggers
+          }
+        });
+        if (signUpErr) throw signUpErr;
+        
+        // 🔄 Switch mode to login instantly and keep inputs filled
+        setAuthMode('login');
+        setAuthError('REGISTRATION SUCCESSFUL');
+      } else {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword
+        });
+        if (signInErr) throw signInErr;
+      }
+    } catch (err) {
+      setAuthError(err.message.toUpperCase());
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    localStorage.clear();
+    setPurchasedAccount(null);
+    setPurchasedProxy(null);
+    window.location.reload();
+  };
 
   const handleMpesaPayment = async () => {
     if (!phoneNumber || phoneNumber.length < 10) {
@@ -109,9 +209,13 @@ export default function App() {
           if (payment?.status === 'success') {
             clearInterval(checkStatus);
             setIntervalId(null);
-
             setPaymentStatus('SUCCESS!');
             
+            // Advance profile phase inside the backend engine dynamically
+            const nextStage = activeTab === 'proxy_selection' ? 'proxy_provisioned' : 'proxy_dashboard';
+            await supabase.from('profiles').update({ current_stage: nextStage }).eq('id', session.user.id);
+            setProfileStage(nextStage);
+
             setTimeout(() => {
               if (activeTab === 'proxy_selection') {
                 setPurchasedProxy(checkout);
@@ -130,7 +234,6 @@ export default function App() {
           } else if (payment?.status === 'failed' || payment?.status === 'cancelled') {
             clearInterval(checkStatus);
             setIntervalId(null);
-
             setPaymentStatus('FAILED');
             setTimeout(() => {
               setVerifying(false);
@@ -141,7 +244,6 @@ export default function App() {
         }, 2000);
 
         setIntervalId(checkStatus);
-
       } else {
         throw new Error(data.errorMessage || 'PUSH FAILED');
       }
@@ -166,13 +268,11 @@ export default function App() {
       let searchReceipt = null;
       const expectedAmount = checkout.price; 
 
-      // 1. Extract receipt number from raw message paste if applicable
       const extractedReceipt = recoveryInput.match(/([A-Z0-9]{10})/i);
 
       if (recoveryInput.toUpperCase().includes('CONFIRMED') && extractedReceipt) {
         searchReceipt = extractedReceipt[1].toUpperCase();
       } else {
-        // 2. Treat as raw phone number input and standardize to country prefix
         let cleaned = recoveryInput.replace(/\D/g, '');
         if (cleaned.startsWith('0')) cleaned = '254' + cleaned.slice(1);
         if (cleaned.startsWith('7') || cleaned.startsWith('1')) cleaned = '254' + cleaned;
@@ -180,11 +280,10 @@ export default function App() {
         if (cleaned.length === 12 && cleaned.startsWith('254')) {
           searchPhone = cleaned;
         } else {
-          throw new Error("INVALID FORMAT. ENTER PHONE NUMBER (E.G. 2547...) OR PASTE FULL M-PESA SMS.");
+          throw new Error("INVALID FORMAT. ENTER PHONE NUMBER OR PASTE FULL M-PESA SMS.");
         }
       }
 
-      // 3. Query the database looking strictly for an authentic successful log
       let query = supabase
         .from('mpesa_payments')
         .select('*')
@@ -203,20 +302,16 @@ export default function App() {
         throw new Error("NO MATCHING SUCCESSFUL TRANSACTION RECORD IN DATABASE.");
       }
 
-      // Grab the newest matching instance to avoid using stale entries
       const latestPayment = payments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
 
-      // 4. CRITICAL SECURITY RULE 1: Price Mismatch Lockout
       if (parseFloat(latestPayment.amount_paid) !== expectedAmount) {
         throw new Error(`PRICE MISMATCH. PAID KES ${latestPayment.amount_paid} FOR A KES ${expectedAmount} ITEM.`);
       }
 
-      // 5. CRITICAL SECURITY RULE 2: Single Device/Session Ownership Verification
       if (latestPayment.claimed_by_user && latestPayment.claimed_by_user !== phoneNumber) {
         throw new Error("SECURITY BLOCK: THIS PAYMENT TRANSACTION WAS ALREADY CLAIMED.");
       }
 
-      // 6. PERMANENT LOCK: Stamp row to stop other users from pasting this entry
       if (!latestPayment.claimed_by_user) {
         const { error: updateError } = await supabase
           .from('mpesa_payments')
@@ -226,8 +321,12 @@ export default function App() {
         if (updateError) throw updateError;
       }
 
-      // 7. FIRE ROUTE TRANSITION 
-      if (intervalId) clearInterval(intervalId); // Clear background loop safely
+      // Advance stage logic safely
+      const nextStage = activeTab === 'proxy_selection' ? 'proxy_provisioned' : 'proxy_dashboard';
+      await supabase.from('profiles').update({ current_stage: nextStage }).eq('id', session.user.id);
+      setProfileStage(nextStage);
+
+      if (intervalId) clearInterval(intervalId); 
       setVerifying(true);
       setPaymentStatus('SUCCESS!');
 
@@ -255,6 +354,94 @@ export default function App() {
     }
   };
 
+  // 🔒 ROUTING SHIELD LAYER: RENDER AUTH GATEWAY SIGN IN/UP
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-[#060606] text-slate-200 flex items-center justify-center p-4 font-sans">
+        <div className="bg-[#0a0a0a] border border-white/5 w-full max-w-md rounded-[2.5rem] p-8 shadow-[0_0_60px_rgba(147,51,234,0.08)]">
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <Shield className="text-purple-500 animate-pulse" size={28} />
+            <span className="text-2xl font-black text-white italic uppercase tracking-tighter">BlueNode Auth</span>
+          </div>
+
+          <div className="grid grid-cols-2 bg-black/40 p-1.5 rounded-xl border border-white/5 mb-6 text-[10px] font-black tracking-widest uppercase">
+            <button 
+              type="button"
+              onClick={() => { setAuthMode('login'); setAuthError(''); }} 
+              className={`py-3 rounded-lg transition-all ${authMode === 'login' ? 'bg-white text-black' : 'text-slate-500'}`}
+            >
+              LOG IN
+            </button>
+            <button 
+              type="button"
+              onClick={() => { setAuthMode('register'); setAuthError(''); }} 
+              className={`py-3 rounded-lg transition-all ${authMode === 'register' ? 'bg-white text-black' : 'text-slate-500'}`}
+            >
+              REGISTER
+            </button>
+          </div>
+
+          <form onSubmit={handleAuthSubmit} className="space-y-4">
+            <div className="relative">
+              <Mail className="absolute left-4 top-4 text-slate-600" size={18} />
+              <input 
+                type="email" 
+                placeholder="EMAIL ADDRESS" 
+                className="w-full bg-black/50 border border-white/5 rounded-xl pl-12 pr-4 py-4 text-sm font-mono text-white outline-none focus:border-purple-500/40 transition-colors"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+              />
+            </div>
+
+            <div className="relative">
+              <Lock className="absolute left-4 top-4 text-slate-600" size={18} />
+              <input 
+                type="password" 
+                placeholder="ACCOUNT PASSWORD" 
+                className="w-full bg-black/50 border border-white/5 rounded-xl pl-12 pr-4 py-4 text-sm font-mono text-white outline-none focus:border-purple-500/40 transition-colors"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+              />
+            </div>
+
+            {authMode === 'register' && (
+              <div className="relative animate-in slide-in-from-top-2 duration-200">
+                <Phone className="absolute left-4 top-4 text-slate-600" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="M-PESA PHONE (e.g., 2547...)" 
+                  className="w-full bg-black/50 border border-white/5 rounded-xl pl-12 pr-4 py-4 text-sm font-mono text-white outline-none focus:border-purple-500/40 transition-colors"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                />
+              </div>
+            )}
+
+            {authError && (
+              <div className={`flex items-center gap-2 border p-4 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+                authError.includes('SUCCESSFUL') 
+                  ? 'text-green-400 bg-green-500/5 border-green-500/20' 
+                  : 'text-red-500 bg-red-500/5 border-red-500/10'
+              }`}>
+                <AlertCircle size={16} className="shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              disabled={authLoading}
+              className="w-full py-4 mt-2 bg-purple-600 hover:bg-purple-500 text-white disabled:bg-purple-800 font-black uppercase text-[11px] tracking-widest rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              {authLoading ? <Loader2 className="animate-spin" size={16} /> : (authMode === 'login' ? 'Access Infrastructure' : 'Create Identity')}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // 👤 RENDER ACTIVE SECURED MARKETPLACE LAYOUT
   return (
     <div className="min-h-screen bg-[#060606] text-slate-200 flex flex-col md:flex-row font-sans overflow-hidden">
       {/* Sidebar */}
@@ -265,40 +452,73 @@ export default function App() {
         </div>
         <div className="flex-1 space-y-2 text-[11px] font-black uppercase tracking-widest">
           <button
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => {
+              if (profileStage === 'accounts_setup' || profileStage === 'proxy_dashboard') {
+                setActiveTab('dashboard');
+              }
+            }}
             className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-purple-500/10 text-purple-400' : 'text-slate-500'}`}
           >
-            <ShoppingCart size={18}/> Marketplace
+            <ShoppingCart size={18}/> Accounts Section
           </button>
           <button
-            onClick={() => setActiveTab(purchasedProxy ? 'provisioning' : (purchasedAccount ? 'proxy_selection' : 'dashboard'))}
-            className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl transition-all ${activeTab !== 'dashboard' ? 'bg-purple-500/10 text-purple-400' : 'text-slate-500'}`}
+            onClick={() => {
+              if (profileStage === 'proxy_dashboard' || profileStage === 'proxy_provisioned') {
+                setActiveTab('proxy_selection');
+              }
+            }}
+            disabled={profileStage === 'accounts_setup'}
+            className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed ${activeTab === 'proxy_selection' || activeTab === 'provisioning' ? 'bg-purple-500/10 text-purple-400' : 'text-slate-500'}`}
           >
-            <Zap size={18}/> Node Manager
+            <Globe size={18}/> Proxies & Nodes
+            {profileStage === 'accounts_setup' && <Lock size={12} className="ml-auto text-slate-600" />}
+          </button>
+        </div>
+
+        {/* User Session Metadata Banner */}
+        <div className="pt-6 border-t border-white/5 mt-auto flex flex-col gap-3">
+          <div className="text-[9px] font-mono text-slate-500 truncate uppercase">
+            Logged as: <span className="text-slate-300 block font-sans font-bold text-xs truncate mt-0.5">{session.user.email}</span>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 bg-white/5 hover:bg-red-500/10 border border-white/5 hover:border-red-500/20 rounded-xl text-slate-400 hover:text-red-400 text-[10px] font-black uppercase tracking-widest transition-all"
+          >
+            <LogOut size={14} /> Log Out
           </button>
         </div>
       </nav>
 
-      {/* Main Content */}
+      {/* Main Content Content Canvas Router */}
       <main className="flex-1 overflow-y-auto p-6 md:p-10">
         {activeTab === 'dashboard' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
-            {MARKET_ITEMS.map(item => (
-              <div key={item.id} className="bg-[#0f0f0f] border border-white/5 p-6 rounded-[2rem] flex flex-col hover:border-purple-500/20 transition-all">
-                <Briefcase className="text-purple-500 mb-4" size={20} />
-                <h3 className="text-lg font-black text-white mb-1 uppercase tracking-tighter">{item.name}</h3>
-                <p className="text-[10px] text-slate-500 mb-6 uppercase tracking-widest">{item.detail}</p>
-                <div className="mt-auto flex items-center justify-between pt-4 border-t border-white/5">
-                  <span className="font-mono font-black text-white text-sm">KES {item.price.toLocaleString()}</span>
-                  <button onClick={() => setCheckout(item)} className="bg-white text-black px-4 py-2 rounded-lg font-black text-[9px] uppercase hover:bg-purple-600 hover:text-white transition-all">Select</button>
+          <div>
+            <div className="mb-6 p-4 bg-purple-500/5 border border-purple-500/10 rounded-2xl flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-purple-400">Step 1: Buy Verification/Transcription Account Access</span>
+              <span className="text-[9px] bg-purple-600 px-3 py-1 rounded font-black text-white uppercase">{profileStage}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
+              {MARKET_ITEMS.map(item => (
+                <div key={item.id} className="bg-[#0f0f0f] border border-white/5 p-6 rounded-[2rem] flex flex-col hover:border-purple-500/20 transition-all">
+                  <Briefcase className="text-purple-500 mb-4" size={20} />
+                  <h3 className="text-lg font-black text-white mb-1 uppercase tracking-tighter">{item.name}</h3>
+                  <p className="text-[10px] text-slate-500 mb-6 uppercase tracking-widest">{item.detail}</p>
+                  <div className="mt-auto flex items-center justify-between pt-4 border-t border-white/5">
+                    <span className="font-mono font-black text-white text-sm">KES {item.price.toLocaleString()}</span>
+                    <button onClick={() => setCheckout(item)} className="bg-white text-black px-4 py-2 rounded-lg font-black text-[9px] uppercase hover:bg-purple-600 hover:text-white transition-all">Select</button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
-        {activeTab === 'proxy_selection' && (
+        {(activeTab === 'proxy_selection' || profileStage === 'proxy_dashboard') && activeTab !== 'provisioning' && activeTab !== 'dashboard' && (
           <div className="max-w-3xl mx-auto text-center py-10 animate-in zoom-in-95 duration-500">
+            <div className="mb-8 p-4 bg-green-500/5 border border-green-500/10 rounded-2xl inline-flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-green-400">Account Cleared. Step 2: Provision Proxy Node Routing</span>
+            </div>
             <h1 className="text-3xl font-black text-white italic uppercase mb-8 tracking-tighter">Select Proxy Node</h1>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {PROXY_ITEMS.map(proxy => (
@@ -321,16 +541,20 @@ export default function App() {
               <div className="flex justify-between"><span className="text-slate-500 uppercase">Route</span><span className="text-purple-400">{purchasedProxy?.name}</span></div>
             </div>
             <button
-              onClick={() => { localStorage.clear(); window.location.reload(); }}
+              onClick={async () => {
+                await supabase.from('profiles').update({ current_stage: 'accounts_setup' }).eq('id', session.user.id);
+                localStorage.clear();
+                window.location.reload();
+              }}
               className="mt-8 text-[9px] font-black text-slate-600 uppercase tracking-widest hover:text-red-500"
             >
-              Reset All Nodes
+              Reset All Nodes & Stages
             </button>
           </div>
         )}
       </main>
 
-      {/* Modal */}
+      {/* Checkout Modal Frame */}
       {checkout && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-[#0f0f0f] border border-white/10 w-full max-w-sm rounded-[2.5rem] p-8 relative shadow-[0_0_50px_rgba(147,51,234,0.15)] my-auto">
